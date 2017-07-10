@@ -239,7 +239,9 @@ XML;
   }
 
   private function is_assignment($page){
-	  return (0 === strpos($page['post_title'], 'Assignment') || 0 === strpos($page['post_title'], 'Cerego'));
+    return (0 === strpos($page['post_title'], 'Assignment') ||
+            0 === strpos($page['post_title'], 'Cerego') ||
+            0 === strpos($page['post_title'], 'OHM'));
   }
 
   private function lti_resources() {
