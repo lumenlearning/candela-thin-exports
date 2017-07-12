@@ -4,7 +4,7 @@
             identifier="%s">
     <title>%s</title>
     <text texttype="text/html">%s</text>
-    <gradable points_possible="10">true</gradable>
+    <gradable points_possible="%s">true</gradable>
     <submission_formats>
         <format type="file"/>
         <format type="html"/>

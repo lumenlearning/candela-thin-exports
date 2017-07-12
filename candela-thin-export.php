@@ -22,7 +22,7 @@ function install_thin_exports()
 add_action('admin_menu', 'thincc_admin_page');
 function thincc_admin_page()
 {
-  $plugin_page = add_management_page('Export to ThinCC', 'Export to ThinCC', 'export', basename(__FILE__), 'thincc_manage');
+  $plugin_page = add_management_page('Export Common Cartridge', 'Export Common Cartridge', 'export', basename(__FILE__), 'thincc_manage');
   add_action('load-' . $plugin_page, 'thincc_add_js');
 }
 
@@ -40,12 +40,16 @@ add_action('wp_ajax_thincc_ajax', 'thincc_ajax');
 function thincc_ajax()
 {
   $sitename = sanitize_key(get_bloginfo('name'));
-  if (!empty($sitename)) $sitename .= '.';
-  $filename = $sitename . 'wordpress.' . date('Y-m-d');
+  if (!empty($sitename)) $sitename .= '-';
   $options = process_thincc_options($_POST);
+  $filename = $sitename . $options['version'] . '-' . date('Y-m-d');
+
+  if ($options['version'] == 'flat') {
+    $options['inline'] = true;
+    $options['version'] = "1.3";
+  }
 
   if(isset($_POST['cc_download']) && $_POST['cc_download'] == '0') {
-//    $options['version'] = 'thin';
     $options['inline'] = true;
     $manifest = new \CC\Manifest(\PressBooks\Book::getBookStructure('', true), $options);
     $manifest->build_manifest();
@@ -61,12 +65,22 @@ function thincc_ajax()
     }
     $manifest = new \CC\Manifest(\PressBooks\Book::getBookStructure('', true), $options);
     $manifest->build_manifest();
-    $file = $manifest->build_zip();
 
-    header('Content-Type: application/vnd.ims.imsccv1p2+application/zip');
-    header('Content-Length: ' . filesize($file));
-    header('Content-Disposition: attachment; filename="' . $filename . '.zip"');
-    readfile($file);
+    if( $options['inline'] ){
+      $file = $manifest->build_flat_file();
+
+      header('Content-Type: text/xml');
+      header('Content-Length: ' . filesize($file));
+      header('Content-Disposition: attachment; filename="' . $filename . '.xml"');
+      readfile($file);
+    } else {
+      $file = $manifest->build_zip();
+
+      header('Content-Type: application/vnd.ims.imsccv1p2+application/zip');
+      header('Content-Length: ' . filesize($file));
+      header('Content-Disposition: attachment; filename="' . $filename . '.zip"');
+      readfile($file);
+    }
   }
 }
 

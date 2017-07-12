@@ -3,4 +3,5 @@
        xsi:schemaLocation="/xsd/imsccv1p3/imsdt_v1p3 /profile/cc/ccv1p3/ccv1p3_imsdt_v1p3.xsd" >
     <title>%s</title>
     <text texttype="text/html">%s</text>
+    %s
 </topic>

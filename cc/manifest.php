@@ -15,6 +15,7 @@ class Manifest extends Base
   private $use_page_name_launch_url = false;
   private $options = null;
   private $guids_cache = null;
+  private $points_possible_cache = null;
 
   private $tmp_file = null;
 
@@ -82,7 +83,7 @@ class Manifest extends Base
 
   public function __construct($structure, $options=[]) {
     $this->book_structure = $structure;
-    $this->version = isset($options['version']) ? $options['version'] : 'thin';
+    $this->version = isset($options['version']) ? $options['version'] : '1.3';
     $this->manifest = self::get_manifest_template();
     $this->lti_link_template = $this->get_lti_link_template();
     $this->web_link_template = $this->get_web_link_template();
@@ -103,7 +104,7 @@ class Manifest extends Base
   }
 
   public function build_zip() {
-    $this->tmp_file = tempnam("tmp","thincc");
+    $this->tmp_file = tempnam("tmp","cc");
     $zip = new \ZipArchive();
     $zip->open($this->tmp_file,\ZipArchive::OVERWRITE);
 
@@ -114,6 +115,12 @@ class Manifest extends Base
 
     $zip->close();
 
+    return $this->tmp_file;
+  }
+
+  public function build_flat_file(){
+    $this->tmp_file = tempnam("tmp","flatcc");
+    file_put_contents($this->tmp_file, $this->manifest);
     return $this->tmp_file;
   }
 
@@ -256,46 +263,74 @@ XML;
 
     if ($this->options['include_fm']) {
       foreach ($this->book_structure['front-matter'] as $fm) {
-        $resources .= sprintf($template, $this->identifier($fm), $this->resource_type($fm), $this->guid_xml($fm), $this->file_or_link_xml($fm));
+        $resources .= sprintf($template, $this->identifier($fm), $this->resource_type($fm), $this->resource_metadata($fm), $this->file_or_link_xml($fm));
       }
     }
     foreach ($this->book_structure['part'] as $part) {
       if ($this->options['include_parts']) {
-        $resources .= sprintf($template, $this->identifier($part), $this->resource_type($part), $this->guid_xml($part), $this->file_or_link_xml($part));
+        $resources .= sprintf($template, $this->identifier($part), $this->resource_type($part), $this->resource_metadata($part), $this->file_or_link_xml($part));
       }
       foreach ($part['chapters'] as $chapter) {
         if ($this->export_page($chapter)) {
-          $resources .= sprintf($template, $this->identifier($chapter), $this->resource_type($chapter), $this->guid_xml($chapter), $this->file_or_link_xml($chapter));
+          $resources .= sprintf($template, $this->identifier($chapter), $this->resource_type($chapter), $this->resource_metadata($chapter), $this->file_or_link_xml($chapter));
         }
       }
     }
     if ($this->options['include_bm']) {
       foreach ($this->book_structure['back-matter'] as $bm) {
-        $resources .= sprintf($template, $this->identifier($bm), $this->resource_type($bm), $this->guid_xml($bm), $this->file_or_link_xml($bm));
+        $resources .= sprintf($template, $this->identifier($bm), $this->resource_type($bm), $this->resource_metadata($bm), $this->file_or_link_xml($bm));
       }
     }
     return $resources;
   }
 
+  private function resource_metadata($page){
+    $metadata = "";
+
+    $has_guids = $this->options['include_guids'] && !empty($this->get_guids($page)) && $this->get_guids($page) !== array("");
+    $is_instructor_only = $page['post_status'] == 'private';
+
+    if ($is_instructor_only || $has_guids) {
+      $metadata = "\n<metadata>";
+      if ($has_guids) {
+        $metadata = $metadata . $this->guid_xml($page);
+      }
+      if ($is_instructor_only) {
+        $metadata = $metadata . $this->instructor_only_xml();
+      }
+      $metadata = $metadata . "\n</metadata>";
+    }
+
+    return $metadata;
+  }
+
+  private function instructor_only_xml() {
+    return <<<XML
+
+              <lom:lom>
+                 <lom:educational>
+                      <lom:intendedEndUserRole>
+                       <lom:source>IMSGLC_CC_Rolesv1p2</lom:source>
+                       <lom:value>Instructor</lom:value>
+                    </lom:intendedEndUserRole>
+                 </lom:educational>
+              </lom:lom>
+XML;
+  }
+
   // Generates CC GUID metadata based on: http://www.imsglobal.org/cc/ccv1p3/imscc_Implementation-v1p3.html#toc-55
   private function guid_xml($page) {
-    if ($this->options['include_guids'] && !empty($this->get_guids($page)) && $this->get_guids($page) !== array("")) {
-      $template = <<<XML
+    $template = <<<XML
 
-            <metadata>
               <curriculumStandardsMetadataSet xmlns="/xsd/imscsmetadata_v1p0">
                 <curriculumStandardsMetadata providerId="lumenlearning.com">
                   <setOfGUIDs>%s
                   </setOfGUIDs>
                 </curriculumStandardsMetadata>
               </curriculumStandardsMetadataSet>
-            </metadata>
 XML;
-      return sprintf($template, $this->inner_guid_labels_xml($page));
-    }
-    else {
-      return '';
-    }
+
+    return sprintf($template, $this->inner_guid_labels_xml($page));
   }
 
   private function file_or_link_xml($page) {
@@ -340,6 +375,19 @@ XML;
       }
     }
     return array_key_exists($page['ID'], $this->guids_cache) ? $this->guids_cache[$page['ID']] : [];
+  }
+
+  private function get_points_possible($page) {
+    if ($this->points_possible_cache === null) {
+      global $wpdb;
+      $sql = $wpdb->prepare( "SELECT post_id, meta_value FROM {$wpdb->postmeta} WHERE meta_key = %s", '_cu_assignment_points_possible' );
+
+      foreach ($wpdb->get_results( $sql, ARRAY_A ) as $val) {
+        $val['meta_value'] = str_replace(' ', '', $val['meta_value']);
+        $this->points_possible_cache[$val['post_id']] = $val['meta_value'];
+      }
+    }
+    return array_key_exists($page['ID'], $this->points_possible_cache) ? $this->points_possible_cache[$page['ID']] : null;
   }
 
   private function add_resource_files($zip) {
@@ -410,9 +458,16 @@ XML;
     if ($add_xml_header) {
       $template = '<?xml version="1.0" encoding="UTF-8"?>' . $template;
     }
+    $points_possible = $this->get_points_possible($page);
+    if( $points_possible == null ){
+      $points_possible = "";
+    } else {
+      // This is not actually valid for CC Topics without proper namespacing
+      $points_possible = "<gradable points_possible=\"$points_possible\">true</gradable>";
+    }
 
     $content = $content = apply_filters( 'the_content', get_post_field('post_content', $page['ID'] ));
-    return sprintf($template, $page['post_title'], htmlspecialchars($content), ENT_XML1);
+    return sprintf($template, $page['post_title'], htmlspecialchars($content), $points_possible, ENT_XML1);
   }
 
   private function assignment_xml($page, $add_xml_header=false) {
@@ -420,9 +475,13 @@ XML;
     if ($add_xml_header) {
       $template = '<?xml version="1.0" encoding="UTF-8"?>' . $template;
     }
+    $points_possible = $this->get_points_possible($page);
+    if( $points_possible == null ){
+      $points_possible = 10;
+    }
 
     $content = $content = apply_filters( 'the_content', get_post_field('post_content', $page['ID'] ));
-    return sprintf($template, $this->identifier($page), $page['post_title'], htmlspecialchars($content), ENT_XML1);
+    return sprintf($template, $this->identifier($page), $page['post_title'], htmlspecialchars($content), $points_possible, ENT_XML1);
   }
 
   private function export_page($page) {
