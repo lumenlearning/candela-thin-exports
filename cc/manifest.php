@@ -103,6 +103,10 @@ class Manifest extends Base
     $this->manifest = str_replace('{resources}', $this->item_resources(), $this->manifest);
   }
 
+  public function get_manifest() {
+    return $this->manifest;
+  }
+
   public function build_zip() {
     $this->tmp_file = tempnam("tmp","cc");
     $zip = new \ZipArchive();
@@ -242,13 +246,13 @@ XML;
   }
 
   private function is_discussion($page){
-    return (0 === strpos($page['post_title'], 'Discussion'));
+    return (0 === strpos($page['post_title'], 'Discussion:'));
   }
 
   private function is_assignment($page){
-    return (0 === strpos($page['post_title'], 'Assignment') ||
-            0 === strpos($page['post_title'], 'Cerego') ||
-            0 === strpos($page['post_title'], 'OHM'));
+    return (0 === strpos($page['post_title'], 'Assignment:') ||
+            0 === strpos($page['post_title'], 'Cerego:') ||
+            0 === strpos($page['post_title'], 'OHM:'));
   }
 
   private function lti_resources() {
@@ -366,6 +370,7 @@ XML;
 
   private function get_guids($page) {
     if ($this->guids_cache === null) {
+      $this->guids_cache = [];
       global $wpdb;
       $sql = $wpdb->prepare( "SELECT post_id, meta_value FROM {$wpdb->postmeta} WHERE meta_key = %s", 'CANDELA_OUTCOMES_GUID' );
 
@@ -377,8 +382,9 @@ XML;
     return array_key_exists($page['ID'], $this->guids_cache) ? $this->guids_cache[$page['ID']] : [];
   }
 
-  private function get_points_possible($page) {
+  private function get_points_possible($page, $default) {
     if ($this->points_possible_cache === null) {
+      $this->points_possible_cache = [];
       global $wpdb;
       $sql = $wpdb->prepare( "SELECT post_id, meta_value FROM {$wpdb->postmeta} WHERE meta_key = %s", '_cu_assignment_points_possible' );
 
@@ -387,7 +393,7 @@ XML;
         $this->points_possible_cache[$val['post_id']] = $val['meta_value'];
       }
     }
-    return array_key_exists($page['ID'], $this->points_possible_cache) ? $this->points_possible_cache[$page['ID']] : null;
+    return array_key_exists($page['ID'], $this->points_possible_cache) ? $this->points_possible_cache[$page['ID']] : $default;
   }
 
   private function add_resource_files($zip) {
@@ -458,16 +464,15 @@ XML;
     if ($add_xml_header) {
       $template = '<?xml version="1.0" encoding="UTF-8"?>' . $template;
     }
-    $points_possible = $this->get_points_possible($page);
-    if( $points_possible == null ){
-      $points_possible = "";
-    } else {
+    $points_possible_html = '';
+    $points_possible = $this->get_points_possible($page, 5);
+    if( $points_possible > 0 ){
       // This is not actually valid for CC Topics without proper namespacing
-      $points_possible = "<gradable points_possible=\"$points_possible\">true</gradable>";
+      $points_possible_html = "<gradable points_possible=\"$points_possible\">true</gradable>";
     }
 
     $content = $content = apply_filters( 'the_content', get_post_field('post_content', $page['ID'] ));
-    return sprintf($template, $page['post_title'], htmlspecialchars($content), $points_possible, ENT_XML1);
+    return sprintf($template, $page['post_title'], htmlspecialchars($content), $points_possible_html, ENT_XML1);
   }
 
   private function assignment_xml($page, $add_xml_header=false) {
@@ -475,8 +480,8 @@ XML;
     if ($add_xml_header) {
       $template = '<?xml version="1.0" encoding="UTF-8"?>' . $template;
     }
-    $points_possible = $this->get_points_possible($page);
-    if( $points_possible == null ){
+    $points_possible = $this->get_points_possible($page, 10);
+    if( $points_possible <= 0 ){
       $points_possible = 10;
     }
 

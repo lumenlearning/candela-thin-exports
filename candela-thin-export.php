@@ -6,10 +6,19 @@ Version: 0.1
 Author: Lumen Learning
 Author URI: http://lumenlearning.com
 */
-?>
-<?php
 require_once('thincc_manage.php');
 require_once('cc/manifest.php');
+
+if ( ! defined( 'CC_EXPORT_PLUGIN_DIR' ) ) {
+  define( 'CC_EXPORT_PLUGIN_DIR', __DIR__ . '/' );
+}
+
+if ( ! defined( 'CC_EXPORT_PLUGIN_URL' ) ) {
+  define( 'CC_EXPORT_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
+}
+
+include CC_EXPORT_PLUGIN_DIR . 'includes/api_endpoint.php';
+
 
 register_activation_hook(__FILE__, 'install_thin_exports');
 function install_thin_exports()
