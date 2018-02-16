@@ -1,6 +1,7 @@
 <?php
 
 namespace CC\Api\Export;
+use Pressbooks\Metadata;
 
 /**
  * Allows an admin to export Common Cartridges
@@ -24,6 +25,14 @@ function export_flat_cc($request) {
   $manifest = new \CC\Manifest(\PressBooks\Book::getBookStructure('', true), $cc_options);
   $manifest->build_manifest();
   $res['imsmanifest'] = $manifest->get_manifest();
+
+  $res['blog_id'] = get_current_blog_id();
+  $res['book_name'] = get_bloginfo( 'name' );
+  $res['admin_url'] = get_admin_url();
+  $res['site_url'] = get_site_url();
+  $meta = new Metadata();
+  $res['is_lumen_master'] = metadata_exists('post', $meta->getMetaPost()->ID, 'candela-is-master-course');
+
 
   return $res;
 }
